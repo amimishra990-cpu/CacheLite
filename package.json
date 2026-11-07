@@ -30,7 +30,15 @@
     "zero-dependencies",
     "lightweight"
   ],
-  "author": "",
+  "author": "amimishra990-cpu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amimishra990-cpu/CacheLite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/amimishra990-cpu/CacheLite/issues"
+  },
+  "homepage": "https://github.com/amimishra990-cpu/CacheLite#readme",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
