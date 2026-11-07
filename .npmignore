@@ -1,0 +1,19 @@
+# Test files
+test/
+*.test.js
+
+# Examples
+examples/
+
+# Development configurations
+.gitignore
+.npmignore
+.github/
+.vscode/
+.idea/
+
+# Coverage reports
+coverage/
+
+# Logs
+*.log

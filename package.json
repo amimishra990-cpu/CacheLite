@@ -1,0 +1,45 @@
+{
+  "name": "cachelite",
+  "version": "1.0.0",
+  "description": "A lightweight, dependency-free in-memory caching library with TTL support for JavaScript and Node.js applications.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.js",
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/cache.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/cache.test.js",
+    "example:basic": "node examples/basic.js",
+    "example:ttl": "node examples/custom-ttl.js",
+    "example:async": "node examples/async-cache.js"
+  },
+  "keywords": [
+    "cache",
+    "caching",
+    "nodejs",
+    "javascript",
+    "memory-cache",
+    "ttl",
+    "in-memory",
+    "zero-dependencies",
+    "lightweight"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "src",
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ]
+}
