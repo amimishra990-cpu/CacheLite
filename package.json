@@ -1,39 +1,69 @@
 {
-  "name": "cachelite",
+  "name": "@hollowintent/cachelite",
   "version": "1.0.0",
-  "description": "A lightweight, dependency-free in-memory caching library with TTL support for JavaScript and Node.js applications.",
+  "description": "A lightweight, dependency-free in-memory caching library with TTL expiration, LRU eviction, async memoization, and TypeScript support for Node.js and JavaScript applications.",
   "main": "index.js",
+  "module": "index.mjs",
   "types": "index.d.ts",
+  "type": "commonjs",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "require": "./index.js",
-      "import": "./index.js",
+      "import": {
+        "types": "./index.d.mts",
+        "default": "./index.mjs"
+      },
+      "require": {
+        "types": "./index.d.cts",
+        "default": "./index.js"
+      },
       "default": "./index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
+  "files": [
+    "src",
+    "index.js",
+    "index.mjs",
+    "index.d.ts",
+    "index.d.cts",
+    "index.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
   "scripts": {
-    "test": "node --test test/cache.test.js",
-    "test:coverage": "node --test --experimental-test-coverage test/cache.test.js",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "prepublishOnly": "npm test",
     "example:basic": "node examples/basic.js",
     "example:ttl": "node examples/custom-ttl.js",
-    "example:async": "node examples/async-cache.js"
+    "example:async": "node examples/async-cache.js",
+    "example:esm": "node examples/esm.mjs"
   },
   "keywords": [
     "cache",
     "caching",
-    "nodejs",
-    "javascript",
+    "in-memory",
     "memory-cache",
     "ttl",
-    "in-memory",
+    "lru",
+    "memoization",
+    "nodejs",
+    "javascript",
+    "typescript",
+    "esm",
+    "commonjs",
     "zero-dependencies",
+    "dependency-free",
     "lightweight"
   ],
-  "author": "amimishra990-cpu",
+  "author": {
+    "name": "amimishra990-cpu",
+    "url": "https://github.com/amimishra990-cpu"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/amimishra990-cpu/CacheLite.git"
+    "url": "git+https://github.com/amimishra990-cpu/CacheLite.git"
   },
   "bugs": {
     "url": "https://github.com/amimishra990-cpu/CacheLite/issues"
@@ -42,12 +72,5 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
-  },
-  "files": [
-    "src",
-    "index.js",
-    "index.d.ts",
-    "README.md",
-    "LICENSE"
-  ]
+  }
 }

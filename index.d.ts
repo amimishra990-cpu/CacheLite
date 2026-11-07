@@ -107,7 +107,8 @@ export class CacheLite<K = any, V = any> implements Iterable<[K, V]> {
 
   /**
    * Retrieve a cached value, or compute and cache it if absent or expired.
-   * Supports both synchronous and asynchronous callbacks.
+   * Supports both synchronous and asynchronous callbacks. Concurrent
+   * asynchronous calls for the same key share a single callback execution.
    * @param key - Cache key.
    * @param callback - Function returning the value or Promise of the value.
    * @param ttl - Optional TTL in milliseconds.
@@ -137,7 +138,8 @@ export class CacheLite<K = any, V = any> implements Iterable<[K, V]> {
   resetStats(): void;
 
   /**
-   * Destroy the instance, clearing data and stopping timers.
+   * Destroy the instance, clearing data, discarding in-flight results,
+   * and stopping timers.
    */
   destroy(): void;
 

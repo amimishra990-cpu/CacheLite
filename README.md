@@ -1,12 +1,13 @@
 # CacheLite
 
-[![npm version](https://img.shields.io/badge/npm-v1.0.0-blue.svg)](https://www.npmjs.com/package/cachelite)
+[![npm version](https://img.shields.io/npm/v/@hollowintent/cachelite.svg)](https://www.npmjs.com/package/@hollowintent/cachelite)
+[![npm downloads](https://img.shields.io/npm/dm/@hollowintent/cachelite.svg)](https://www.npmjs.com/package/@hollowintent/cachelite)
 [![GitHub](https://img.shields.io/badge/GitHub-amimishra990--cpu%2FCacheLite-blue.svg)](https://github.com/amimishra990-cpu/CacheLite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#)
 
-A lightweight, high-performance, **zero-dependency** in-memory caching library for JavaScript and Node.js applications with flexible Time-To-Live (TTL) expiration, automatic cleanup, and transparent async memoization.
+A lightweight, **zero-dependency** in-memory caching library for Node.js and JavaScript applications with millisecond TTL expiration, LRU eviction, async memoization, operational statistics, and bundled TypeScript declarations.
 
 ---
 
@@ -14,17 +15,24 @@ A lightweight, high-performance, **zero-dependency** in-memory caching library f
 
 - [Why CacheLite?](#why-cachelite)
 - [Key Features](#key-features)
+- [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+  - [CommonJS](#commonjs)
+  - [ES Modules](#es-modules)
+  - [TypeScript](#typescript)
 - [Complete API Reference](#complete-api-reference)
   - [Constructor](#constructor)
+  - [Properties](#properties)
   - [Methods](#methods)
+  - [Iteration](#iteration)
 - [Understanding TTL (Time-To-Live)](#understanding-ttl-time-to-live)
 - [Code Examples](#code-examples)
   - [1. Synchronous vs Asynchronous `getOrSet`](#1-synchronous-vs-asynchronous-getorset)
   - [2. Custom TTL and Per-Item Expiration](#2-custom-ttl-and-per-item-expiration)
   - [3. Express.js Route Caching Middleware](#3-expressjs-route-caching-middleware)
 - [Edge Cases & Error Handling](#edge-cases--error-handling)
+- [Package Formats & Compatibility](#package-formats--compatibility)
 - [Running Tests](#running-tests)
 - [Contributing](#contributing)
 - [License](#license)
@@ -52,9 +60,19 @@ While heavy solutions like Redis require external infrastructure, network overhe
   - **Lazy Eviction:** Expired entries are detected and pruned instantly on access.
   - **Active Cleanup:** `cleanup()` sweeps and deletes stale items, with optional automatic interval timers.
 - **LRU Capacity Limit:** Configurable `maxEntries` evicts least-recently-used items when capacity is reached.
-- **Smart `getOrSet()`:** Prevents cache stampedes by retrieving cached values or computing and saving fresh ones.
+- **Smart `getOrSet()`:** Coalesces concurrent async cache misses into a single callback execution and caches the result.
 - **Built-in Metrics:** Track cache hits, misses, hit ratio, and memory size with `getStats()`.
 - **Chainable API:** Method chaining support (`cache.set('a', 1).set('b', 2)`).
+- **Dual Module Support:** First-class CommonJS and ES Module entry points.
+- **TypeScript Ready:** Comprehensive bundled declarations with generic key/value types.
+
+---
+
+## Requirements
+
+- Node.js **18.0.0 or newer**.
+- No runtime dependencies.
+- Tests use the built-in `node:test` runner.
 
 ---
 
@@ -64,44 +82,83 @@ Install using your favorite package manager:
 
 ```bash
 # Using npm
-npm install cachelite
+npm install @hollowintent/cachelite
 
 # Using yarn
-yarn add cachelite
+yarn add @hollowintent/cachelite
 
 # Using pnpm
-pnpm add cachelite
+pnpm add @hollowintent/cachelite
 ```
 
 ---
 
 ## Quick Start
 
+### CommonJS
+
 ```javascript
-const CacheLite = require('cachelite');
+const CacheLite = require('@hollowintent/cachelite');
 
 // Create a cache with a 60-second default TTL
 const cache = new CacheLite({ defaultTTL: 60000 });
 
-// 1. Store data
+// Store, retrieve, check, and delete
 cache.set('user:42', { name: 'Alice', role: 'admin' });
-
-// 2. Retrieve data
 const user = cache.get('user:42');
 console.log(user); // { name: 'Alice', role: 'admin' }
-
-// 3. Check key existence
-if (cache.has('user:42')) {
-  console.log('User is in cache');
-}
-
-// 4. Delete key
+console.log(cache.has('user:42')); // true
 cache.delete('user:42');
 
-// 5. Atomic get-or-set with asynchronous database query
+// Async cache-aside
+async function loadProfile() {
+  return cache.getOrSet('profile:42', async () => {
+    return fetchUserProfileFromDatabase(42);
+  }, 30000);
+}
+```
+
+The CommonJS entry point also exposes named and `.default` properties:
+
+```javascript
+const CacheLite = require('@hollowintent/cachelite');
+const { CacheLite: NamedCacheLite } = require('@hollowintent/cachelite');
+
+console.log(CacheLite === NamedCacheLite); // true
+```
+
+### ES Modules
+
+```javascript
+import CacheLite, { CacheLite as NamedCacheLite } from '@hollowintent/cachelite';
+
+const cache = new CacheLite({ defaultTTL: 30000 });
+
 const profile = await cache.getOrSet('profile:42', async () => {
-  return await fetchUserProfileFromDatabase(42);
-}, 30000); // cache for 30 seconds
+  return fetchUserProfileFromDatabase(42);
+}, 15000);
+
+console.log(profile);
+console.log(CacheLite === NamedCacheLite); // true
+```
+
+### TypeScript
+
+CacheLite ships its own declarations:
+
+```typescript
+import CacheLite from '@hollowintent/cachelite';
+
+interface User {
+  id: number;
+  name: string;
+}
+
+const cache = new CacheLite<string, User>({ defaultTTL: 60000 });
+
+cache.set('user:42', { id: 42, name: 'Alice' });
+
+const user: User | undefined = cache.get('user:42');
 ```
 
 ---
@@ -118,9 +175,18 @@ const cache = new CacheLite(options);
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `defaultTTL` | `number` | `null` | Default time-to-live in milliseconds for newly stored entries. If `null`, entries never expire unless an individual TTL is specified. |
-| `cleanupInterval` | `number` | `null` | Background interval (in ms) to automatically sweep and remove expired entries. Uses `unref()` so it won't block the Node.js event loop from exiting. |
-| `maxEntries` | `number` | `null` | Maximum number of keys allowed. When full, expired items are pruned first, followed by least-recently-used (LRU) items. |
+| `defaultTTL` | `number` | `null` | Default time-to-live in milliseconds for newly stored entries. Must be a finite, non-negative number. If `null`, entries never expire unless an individual TTL is specified. |
+| `cleanupInterval` | `number` | `null` | Background interval (in ms) to automatically sweep and remove expired entries. Must be a finite, positive number. Uses `unref()` so it won't block the Node.js event loop from exiting. |
+| `maxEntries` | `number` | `null` | Maximum number of keys allowed. Must be a positive integer. When full, expired items are pruned first, followed by least-recently-used (LRU) items. |
+
+Passing `null` or a non-object as `options` throws a `TypeError`.
+
+### Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `cache.defaultTTL` | `number \| null` | The configured default TTL. |
+| `cache.maxEntries` | `number \| null` | The configured capacity limit. |
 
 ---
 
@@ -184,7 +250,7 @@ console.log('Active items:', cache.size());
 
 #### `keys()`
 Returns an array of all active, non-expired cache keys.
-- **Returns:** `Array<string|number|symbol>`.
+- **Returns:** `Array<any>`.
 
 ```javascript
 const activeKeys = cache.keys();
@@ -203,6 +269,8 @@ Retrieves a value from cache if present. If missing or expired, executes `callba
 - Seamlessly handles both **synchronous** and **asynchronous** callbacks.
 - If `callback` returns a Promise, `getOrSet` returns a Promise that resolves to the value.
 - If `callback` returns a plain value, `getOrSet` returns that value synchronously.
+- Concurrent async calls for the same key share a single callback execution, preventing cache stampedes.
+- If the callback throws or rejects, nothing is cached and the error propagates to the caller.
 - **Returns:** `value` or `Promise<value>`.
 
 ```javascript
@@ -239,7 +307,19 @@ console.log(cache.getStats());
 Resets hit and miss counters back to 0.
 
 #### `destroy()`
-Clears all entries and stops any background timers.
+Clears all entries, discards results from in-flight `getOrSet()` work, and stops any background timers. The instance should not be reused after calling `destroy()`.
+
+#### Iteration
+
+CacheLite implements `Symbol.iterator`, so it works with `for...of`, spread, and destructuring:
+
+```javascript
+for (const [key, value] of cache) {
+  console.log(key, value);
+}
+
+const snapshot = [...cache];
+```
 
 ---
 
@@ -267,6 +347,8 @@ CacheLite uses a high-performance **hybrid expiration strategy**:
 1. **Lazy Eviction:** Whenever an item is accessed via `get()` or `has()`, CacheLite checks whether `Date.now() >= expiresAt`. If expired, it removes the entry immediately and returns `undefined` or `false`.
 2. **Active Cleanup:** Calling `cache.cleanup()` or setting `cleanupInterval: 60000` periodically purges unaccessed expired items from memory, preventing lingering memory retention.
 
+TTL values must be finite and non-negative. Use `ttl: 0` for immediate expiration and `null` for no expiration; `NaN` and `Infinity` are rejected.
+
 ---
 
 ## Code Examples
@@ -274,7 +356,7 @@ CacheLite uses a high-performance **hybrid expiration strategy**:
 ### 1. Synchronous vs Asynchronous `getOrSet`
 
 ```javascript
-const CacheLite = require('cachelite');
+const CacheLite = require('@hollowintent/cachelite');
 const cache = new CacheLite({ defaultTTL: 10000 });
 
 // --- Synchronous Expensive Task ---
@@ -303,7 +385,7 @@ const products = await cache.getOrSet('products:all', fetchProducts, 60000);
 ### 2. Custom TTL and Per-Item Expiration
 
 ```javascript
-const CacheLite = require('cachelite');
+const CacheLite = require('@hollowintent/cachelite');
 const cache = new CacheLite({ defaultTTL: 5000 }); // 5s default
 
 // Item 1: Uses 5s default TTL
@@ -325,7 +407,7 @@ Here is an example of creating a caching middleware for an Express.js API:
 
 ```javascript
 const express = require('express');
-const CacheLite = require('cachelite');
+const CacheLite = require('@hollowintent/cachelite');
 
 const app = express();
 const routeCache = new CacheLite({ defaultTTL: 30000 }); // Cache responses for 30s
@@ -339,7 +421,7 @@ function cacheMiddleware(ttl) {
     const cacheKey = req.originalUrl || req.url;
     const cachedBody = routeCache.get(cacheKey);
 
-    if (cachedBody) {
+    if (cachedBody !== undefined) {
       res.setHeader('X-Cache', 'HIT');
       return res.json(cachedBody);
     }
@@ -383,6 +465,12 @@ CacheLite is strictly engineered to handle real-world JavaScript edge cases:
    cache.set('emptyVal', null);
    cache.get('emptyVal'); // returns null
 
+   cache.set('emptyString', '');
+   cache.get('emptyString'); // returns ''
+
+   cache.set('nanVal', NaN);
+   Number.isNaN(cache.get('nanVal')); // true
+
    cache.set('undefVal', undefined);
    cache.has('undefVal'); // returns true!
    ```
@@ -390,7 +478,9 @@ CacheLite is strictly engineered to handle real-world JavaScript edge cases:
 2. **Strict Validation:**
    - Passing `null` or `undefined` as a cache key throws a `TypeError`.
    - Passing a negative number for TTL throws a `RangeError`.
-   - Passing non-numeric types for TTL throws a `TypeError`.
+   - Passing non-numeric, `NaN`, or infinite TTL values throws a `TypeError`.
+   - Passing a non-positive or non-finite `cleanupInterval` throws a `TypeError`.
+   - Passing `null` or a non-object `options` throws a `TypeError`.
    - Passing a non-function callback to `getOrSet` throws a `TypeError`.
 
 3. **Zero TTL:**
@@ -398,15 +488,26 @@ CacheLite is strictly engineered to handle real-world JavaScript edge cases:
 
 4. **Promise Rejections in `getOrSet`:**
    - If an async callback rejects, the rejection propagates to your caller and **nothing** is saved into cache.
+   - Concurrent async callers share the same rejection; the next call retries because failed work is never cached.
+
+---
+
+## Package Formats & Compatibility
+
+- **CommonJS:** `require('@hollowintent/cachelite')` resolves to `index.js`; named and `.default` properties are also exposed.
+- **ES Modules:** `import CacheLite from '@hollowintent/cachelite'` and `import { CacheLite } from '@hollowintent/cachelite'` resolve to `index.mjs`.
+- **TypeScript:** declarations are bundled in `index.d.ts` and selected through the `exports` map.
+- **Tree-shaking:** `sideEffects` is set to `false`.
+- **Node.js:** version 18 or newer.
 
 ---
 
 ## Running Tests
 
-CacheLite uses Node.js's native test runner (`node:test`) and strict assertion library (`node:assert/strict`). No extra testing dependencies are needed.
+CacheLite uses Node.js's native test runner (`node:test`) and strict assertion library (`node:assert/strict`). No extra testing dependencies are needed. The suite covers both the CommonJS and ES Module entry points.
 
 ```bash
-# Run unit tests
+# Run all unit tests
 npm test
 
 # Run tests with native code coverage
@@ -419,6 +520,7 @@ npm run test:coverage
 npm run example:basic
 npm run example:ttl
 npm run example:async
+npm run example:esm
 ```
 
 ---

@@ -21,13 +21,13 @@ function validateKey(key) {
 /**
  * Validates a TTL (Time-To-Live) value in milliseconds.
  * @param {*} ttl - The TTL in milliseconds.
- * @throws {TypeError} If ttl is not a number.
+ * @throws {TypeError} If ttl is not a finite number.
  * @throws {RangeError} If ttl is negative.
  */
 function validateTTL(ttl) {
   if (ttl !== undefined && ttl !== null) {
-    if (typeof ttl !== 'number' || Number.isNaN(ttl)) {
-      throw new TypeError('TTL must be a number representing milliseconds.');
+    if (typeof ttl !== 'number' || !Number.isFinite(ttl)) {
+      throw new TypeError('TTL must be a finite number representing milliseconds.');
     }
     if (ttl < 0) {
       throw new RangeError('TTL must be a non-negative number.');
@@ -64,7 +64,7 @@ class CacheLite {
    * @param {number} [options.maxEntries] - Maximum capacity before least-recently-used items are evicted.
    */
   constructor(options = {}) {
-    if (options !== null && typeof options !== 'object') {
+    if (options === null || typeof options !== 'object') {
       throw new TypeError('Options must be an object.');
     }
 
@@ -87,6 +87,8 @@ class CacheLite {
     }
 
     this._store = new Map();
+    // Tracks in-flight async getOrSet() computations so concurrent misses share one call.
+    this._inflight = new Map();
     this._stats = {
       hits: 0,
       misses: 0,
@@ -94,8 +96,8 @@ class CacheLite {
 
     this._cleanupTimer = null;
     if (cleanupInterval !== undefined) {
-      if (typeof cleanupInterval !== 'number' || cleanupInterval <= 0) {
-        throw new TypeError('cleanupInterval must be a positive number in milliseconds.');
+      if (typeof cleanupInterval !== 'number' || !Number.isFinite(cleanupInterval) || cleanupInterval <= 0) {
+        throw new TypeError('cleanupInterval must be a positive finite number in milliseconds.');
       }
       this._startCleanupTimer(cleanupInterval);
     }
@@ -344,7 +346,8 @@ class CacheLite {
   /**
    * Return cached data if present and valid, or execute the callback,
    * cache its result, and return it.
-   * Supports both synchronous and asynchronous callbacks.
+   * Supports both synchronous and asynchronous callbacks. Concurrent
+   * asynchronous callers for the same key share a single callback execution.
    *
    * @param {*} key - Cache key.
    * @param {Function} callback - Function returning the value or a Promise.
@@ -356,9 +359,16 @@ class CacheLite {
     if (typeof callback !== 'function') {
       throw new TypeError('Callback must be a function.');
     }
+    validateTTL(ttl);
 
     if (this.has(key)) {
       return this.get(key);
+    }
+
+    // Join an identical in-flight async computation instead of starting a new one.
+    if (this._inflight.has(key)) {
+      this._stats.misses++;
+      return this._inflight.get(key);
     }
 
     this._stats.misses++;
@@ -372,10 +382,26 @@ class CacheLite {
 
     // Check if result is a Promise (or thenable)
     if (result !== null && (typeof result === 'object' || typeof result === 'function') && typeof result.then === 'function') {
-      return result.then((resolvedValue) => {
-        this.set(key, resolvedValue, ttl);
+      const promise = Promise.resolve(result).then((resolvedValue) => {
+        // Skip storing when the instance was destroyed while the work was in flight.
+        if (this._inflight.get(key) === promise) {
+          this.set(key, resolvedValue, ttl);
+        }
         return resolvedValue;
       });
+
+      this._inflight.set(key, promise);
+      promise
+        .finally(() => {
+          if (this._inflight.get(key) === promise) {
+            this._inflight.delete(key);
+          }
+        })
+        .catch(() => {
+          // The cleanup chain must not create an unhandled rejection.
+        });
+
+      return promise;
     }
 
     // Synchronous result
@@ -434,6 +460,7 @@ class CacheLite {
    */
   destroy() {
     this.stopCleanup();
+    this._inflight.clear();
     this.clear();
   }
 

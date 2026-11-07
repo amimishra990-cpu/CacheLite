@@ -14,6 +14,22 @@ describe('CacheLite Core Functionality', () => {
     cache = new CacheLite();
   });
 
+  describe('Module exports', () => {
+    test('CommonJS default, named, and .default exports reference the same class', () => {
+      const exported = require('../index');
+      assert.equal(exported, CacheLite);
+      assert.equal(exported.CacheLite, CacheLite);
+      assert.equal(exported.default, CacheLite);
+    });
+  });
+
+  describe('Constructor validation', () => {
+    test('should reject null or non-object options with a clear TypeError', () => {
+      assert.throws(() => new CacheLite(null), /Options must be an object/);
+      assert.throws(() => new CacheLite('invalid'), /Options must be an object/);
+    });
+  });
+
   describe('set() and get()', () => {
     test('should store and retrieve a primitive string value', () => {
       cache.set('greeting', 'Hello World');
@@ -220,10 +236,16 @@ describe('CacheLite Core Functionality', () => {
 
     test('should throw errors on invalid TTL values', () => {
       assert.throws(() => cache.set('k', 'v', -10), /TTL must be a non-negative number/);
-      assert.throws(() => cache.set('k', 'v', '1000'), /TTL must be a number/);
-      assert.throws(() => cache.set('k', 'v', NaN), /TTL must be a number/);
+      assert.throws(() => cache.set('k', 'v', '1000'), /TTL must be a finite number/);
+      assert.throws(() => cache.set('k', 'v', NaN), /TTL must be a finite number/);
       assert.throws(() => new CacheLite({ defaultTTL: -50 }), /TTL must be a non-negative number/);
-      assert.throws(() => new CacheLite({ defaultTTL: 'hour' }), /TTL must be a number/);
+      assert.throws(() => new CacheLite({ defaultTTL: 'hour' }), /TTL must be a finite number/);
+    });
+
+    test('should reject non-finite TTL values', () => {
+      assert.throws(() => cache.set('k', 'v', Infinity), /TTL must be a finite number/);
+      assert.throws(() => new CacheLite({ defaultTTL: Infinity }), /TTL must be a finite number/);
+      assert.throws(() => cache.getOrSet('k', () => 'v', Infinity), /TTL must be a finite number/);
     });
 
     test('keys() and size() should exclude expired entries', async () => {
@@ -271,6 +293,14 @@ describe('CacheLite Core Functionality', () => {
       // Raw entries count should be 0 because background timer cleaned it up
       assert.equal(autoCache.getStats().rawEntriesCount, 0);
       autoCache.stopCleanup();
+    });
+
+    test('should validate cleanupInterval option', () => {
+      assert.throws(() => new CacheLite({ cleanupInterval: 0 }), /cleanupInterval must be a positive finite number/);
+      assert.throws(() => new CacheLite({ cleanupInterval: -10 }), /cleanupInterval must be a positive finite number/);
+      assert.throws(() => new CacheLite({ cleanupInterval: NaN }), /cleanupInterval must be a positive finite number/);
+      assert.throws(() => new CacheLite({ cleanupInterval: Infinity }), /cleanupInterval must be a positive finite number/);
+      assert.throws(() => new CacheLite({ cleanupInterval: '1000' }), /cleanupInterval must be a positive finite number/);
     });
   });
 
@@ -360,6 +390,71 @@ describe('CacheLite Core Functionality', () => {
 
     test('getOrSet() throws TypeError if callback is not a function', () => {
       assert.throws(() => cache.getOrSet('key', 'not-a-func'), /Callback must be a function/);
+    });
+  });
+
+  describe('Concurrency and in-flight deduplication', () => {
+    test('concurrent async getOrSet() calls should share one callback execution', async () => {
+      let callCount = 0;
+      const callback = async () => {
+        callCount++;
+        await sleep(30);
+        return 'shared_value';
+      };
+
+      const [a, b, c] = await Promise.all([
+        cache.getOrSet('stampede', callback, 1000),
+        cache.getOrSet('stampede', callback, 1000),
+        cache.getOrSet('stampede', callback, 1000),
+      ]);
+
+      assert.equal(callCount, 1);
+      assert.deepEqual([a, b, c], ['shared_value', 'shared_value', 'shared_value']);
+      assert.equal(cache.get('stampede'), 'shared_value');
+
+      const cached = cache.getOrSet('stampede', callback);
+      assert.equal(cached, 'shared_value');
+      assert.equal(callCount, 1);
+    });
+
+    test('concurrent async getOrSet() calls should share one rejection and allow retry', async () => {
+      let callCount = 0;
+      const failing = async () => {
+        callCount++;
+        await sleep(15);
+        throw new Error('shared failure');
+      };
+
+      const results = await Promise.allSettled([
+        cache.getOrSet('failing', failing),
+        cache.getOrSet('failing', failing),
+      ]);
+
+      assert.equal(callCount, 1);
+      assert.ok(results.every((result) => result.status === 'rejected'));
+      assert.ok(results.every((result) => /shared failure/.test(result.reason.message)));
+      assert.equal(cache.has('failing'), false);
+
+      const retried = await cache.getOrSet('failing', async () => {
+        callCount++;
+        return 'recovered';
+      });
+      assert.equal(retried, 'recovered');
+      assert.equal(callCount, 2);
+    });
+
+    test('destroy() should discard results from in-flight getOrSet() work', async () => {
+      let resolveWork;
+      const work = new Promise((resolve) => {
+        resolveWork = resolve;
+      });
+
+      const pending = cache.getOrSet('late', () => work);
+      cache.destroy();
+      resolveWork('too_late');
+
+      assert.equal(await pending, 'too_late');
+      assert.equal(cache.has('late'), false);
     });
   });
 
